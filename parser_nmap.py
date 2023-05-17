@@ -51,16 +51,17 @@ class ConstRegex(Enum):
     REG_IP_FROM_TITLE = r'[0-9]+(?:\.[0-9]+){3}'
 
 
-# повыебываться
 def drop_operation(msg):
     print(f'{Colors.FAIL}{Status.ERROR.value} Drop operation: {msg}{Colors.END}')
     exit()
 
 
-# повыебываться
 def info_operation(msg):
-    print(f'{Colors.GREEN}{Status.INFO.value} {msg}{Colors.END}')
-    return
+    return f'{Colors.GREEN}{Status.INFO.value} {msg}{Colors.END}'
+
+
+def header_operation(msg):
+    return f'{Colors.HEADER}{msg}{Colors.END}'
 
 
 def sort_ip(report_nmap):
@@ -72,6 +73,7 @@ def sort_ip(report_nmap):
 def parse_scan(report_nmap, operation):
     scan = []
     count_type = 0
+    count_open_ports = 0
     remember_title = ''
     remember_title_port = ''
     flag_strip = False
@@ -93,9 +95,10 @@ def parse_scan(report_nmap, operation):
                     # ----------------------------------------------------
                     if ConstRegex.REG_TCP_PORT.value == re_type:
                         line_report = line_report.replace('/tcp', '    ').replace('open', '    ')
+                        count_open_ports = count_open_ports + 1
                         if not flag_strip:
                             scan.append('\n')
-                            scan.append(remember_title)
+                            scan.append(header_operation(remember_title))
                             scan.append(remember_title_port)
                             flag_strip = True
                     if ConstRegex.REG_TITLE_PORT.value == re_type:
@@ -104,6 +107,9 @@ def parse_scan(report_nmap, operation):
                     elif ConstRegex.REG_TITLE.value == re_type:
                         flag_strip = False
                         remember_title = line_report
+                        if count_open_ports:
+                            scan.append(header_operation(f'Total open ports: {count_open_ports}'))
+                            count_open_ports = 0
                         break
                     # ----------------------------------------------------
                     #                   sorry za govno
@@ -157,29 +163,29 @@ def main():
     parse_reg_scan = []
     if args.ip:
         if args.ip == Operation.IP_VULNERABLE.value:
-            info_operation('Parsing VULNERABLE ip...')
+            print(info_operation('Parsing VULNERABLE ip...'))
             parse_reg_scan = sort_ip(parse_scan(report_nmap, Operation.IP_VULNERABLE))
         elif args.ip == Operation.IP_ALL.value:
-            info_operation(f'Parsing ALL ip...')
+            print(info_operation(f'Parsing ALL ip...'))
             parse_reg_scan = sort_ip(parse_scan(report_nmap, Operation.IP_ALL))
         elif args.ip == Operation.IP_OPEN.value:
-            info_operation('Parsing OPEN TCP ip...')
+            print(info_operation('Parsing OPEN TCP ip...'))
             parse_reg_scan = sort_ip(parse_scan(report_nmap, Operation.IP_OPEN))
         else:
             drop_operation(f'Unsupported ip operation "{args.ip}"')
     else:
-        info_operation('Parsing...')
+        print(info_operation('Parsing...'))
         parse_reg_scan = parse_scan(report_nmap, Operation.ALL_REPORT)
 
     if args.output:
-        info_operation(f'Generate report to {args.output} file...')
+        print(info_operation(f'Generate report to {args.output} file...'))
         with open(args.output, 'w') as write_tile:
             for line in parse_reg_scan:
-                write_tile.write(f'{line}\n')
+                write_tile.write(f"{line.replace(Colors.HEADER, '').replace(Colors.END, '')}\n")
     else:
         for line in parse_reg_scan:
             print(line)
-    info_operation('Done')
+    print(info_operation('Done'))
     return
 
 
