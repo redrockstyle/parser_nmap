@@ -8,6 +8,8 @@ options:
   -s SCAN, --scan SCAN  report scan NMAP
   -o OUTPUT, --output OUTPUT
                         generate file report
+  -t TARGET, --target TARGET
+                        parse scan for one ip
   -i {1,2,3}, --ip {1,2,3}
                         output ip: 1 - for VULNERABLE ip; 2 - for ALL ip; 3 - for ip with OPEN TCP ports
 ```
