@@ -74,6 +74,7 @@ def parse_scan(report_nmap, operation):
     scan = {}
     body = []
     count_open_ports = 0
+    count_append = 0
     remember_title = ''
     remember_title_port = ''
     for line_report in report_nmap:
@@ -81,16 +82,24 @@ def parse_scan(report_nmap, operation):
         if not line_report:
             continue
 
+        if count_append:
+            body.append(line_report)
+            count_append = 0
+
         for re_type, count_type_str in json_regex_types.items():
             if re.search(re_type, line_report):
                 # ALL REPORT SCAN
                 if operation == Operation.ALL_REPORT:
-                    if ConstRegex.REG_TCP_PORT.value == re_type:
+                    if ConstRegex.REG_VULNERABLE.value == re_type:
+                        body.append(line_report)
+                        count_append = count_type_str
+                        break
+                    elif ConstRegex.REG_TCP_PORT.value == re_type:
                         line_report = line_report.replace('/tcp', '    ').replace('open', '    ')
                         body.append(line_report)
                         count_open_ports = count_open_ports + 1
                         break
-                    if ConstRegex.REG_TITLE_PORT.value == re_type:
+                    elif ConstRegex.REG_TITLE_PORT.value == re_type:
                         remember_title_port = line_report.replace('STATE', '     ')
                         break
                     elif ConstRegex.REG_TITLE.value == re_type:
