@@ -6,31 +6,24 @@ from socket import inet_aton
 from enum import Enum
 os.system("")   # enable color
 
+version = "v1.2.0"
+
 json_regex_types = {r'Nmap scan report for .*$': "0", r'^[0-9]*/tcp.*open.*': "0",
                     r'Aggressive OS guesses:.*': "0", r'PORT.*': "0", r'Device type:.*$': "0",
                     r'OS details:.*$': "0", "VULNERABLE:": "1"}
 
 
-# повыебываться
 class Status(Enum):
     INFO = '[*]'
     ERROR = '[!]'
 
 
-# повыебываться
 class Colors:
     HEADER = '\033[95m'
     GREEN = '\033[92m'
     WARNING = '\033[93m'
     FAIL = '\033[91m'
     END = '\033[0m'
-
-    # def disable(self):
-    #     self.HEADER = ''
-    #     self.GREEN = ''
-    #     self.WARNING = ''
-    #     self.FAIL = ''
-    #     self.END = ''
 
 
 class Operation(Enum):
@@ -178,7 +171,8 @@ def print_scan(data):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='TCP Parser NMAP')
+    parser = argparse.ArgumentParser(description="TCP Parser NMAP " + version)
+    parser.add_argument('-v', '-V', '--version', action='version', version=version)
     parser.add_argument('-s', '--scan', required=True, help='report scan NMAP')
     parser.add_argument('-o', '--output', help='generate file report')
     parser.add_argument('-t', '--target', help='print-parsing for one ip')
@@ -190,7 +184,6 @@ def main():
     args = parser.parse_args()
     if not os.path.isfile(args.scan):
         drop_operation(f'File {args.scan} not found')
-        return
 
     report_nmap = open(args.scan, 'r')
     parse_reg_scan = []
