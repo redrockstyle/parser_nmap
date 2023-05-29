@@ -71,88 +71,112 @@ def sort_ip(report_nmap):
 
 
 def parse_scan(report_nmap, operation):
-    scan = []
-    count_type = 0
+    scan = {}
+    body = []
     count_open_ports = 0
     remember_title = ''
     remember_title_port = ''
-    flag_strip = False
     for line_report in report_nmap:
         line_report = line_report.strip()
         if not line_report:
             continue
 
-        if count_type > 0:
-            scan.append(line_report)
-            count_type = count_type - 1
-            continue
-
         for re_type, count_type_str in json_regex_types.items():
             if re.search(re_type, line_report):
+                # ALL REPORT SCAN
                 if operation == Operation.ALL_REPORT:
-                    # ----------------------------------------------------
-                    #                   sorry za govno
-                    # ----------------------------------------------------
                     if ConstRegex.REG_TCP_PORT.value == re_type:
                         line_report = line_report.replace('/tcp', '    ').replace('open', '    ')
+                        body.append(line_report)
                         count_open_ports = count_open_ports + 1
-                        if not flag_strip:
-                            scan.append('\n')
-                            scan.append(header_operation(remember_title))
-                            scan.append(remember_title_port)
-                            flag_strip = True
+                        break
                     if ConstRegex.REG_TITLE_PORT.value == re_type:
                         remember_title_port = line_report.replace('STATE', '     ')
                         break
                     elif ConstRegex.REG_TITLE.value == re_type:
-                        flag_strip = False
-                        remember_title = line_report
                         if count_open_ports:
-                            scan.append(header_operation(f'Total open ports: {count_open_ports}'))
+                            body.insert(0, remember_title_port)
+                            body.insert(0, remember_title)
+                            body.append(f'Total open ports: {count_open_ports}')
+                            scan[''.join(re.findall(ConstRegex.REG_IP_FROM_TITLE.value, remember_title)[-1:])] = body
                             count_open_ports = 0
+                            body = []
+                        remember_title = line_report
                         break
-                    # ----------------------------------------------------
-                    #                   sorry za govno
-                    # ----------------------------------------------------
-                    if flag_strip:
-                        count_type = int(count_type_str)
-                        scan.append(line_report)
-                    break
                 # VULNERABLE IP
                 elif operation == Operation.IP_VULNERABLE:
                     if ConstRegex.REG_VULNERABLE.value == re_type:
                         if remember_title:
-                            scan.append(''.join(re.findall(ConstRegex.REG_IP_FROM_TITLE.value, remember_title)[-1:]))
+                            body.append(''.join(re.findall(ConstRegex.REG_IP_FROM_TITLE.value, remember_title)[-1:]))
                             remember_title = ''
                     elif ConstRegex.REG_TITLE.value == re_type:
                         remember_title = line_report
                 # ALL IP
                 elif operation == Operation.IP_ALL:
                     if ConstRegex.REG_TITLE.value == re_type:
-                        scan.append(''.join(re.findall(ConstRegex.REG_IP_FROM_TITLE.value, line_report)[-1:]))
+                        body.append(''.join(re.findall(ConstRegex.REG_IP_FROM_TITLE.value, line_report)[-1:]))
                 # OPEN TCP IP
                 elif operation == Operation.IP_OPEN:
                     if ConstRegex.REG_TCP_PORT.value == re_type:
                         if remember_title:
-                            scan.append(''.join(re.findall(ConstRegex.REG_IP_FROM_TITLE.value, remember_title)[-1:]))
+                            body.append(''.join(re.findall(ConstRegex.REG_IP_FROM_TITLE.value, remember_title)[-1:]))
                             remember_title = ''
                     elif ConstRegex.REG_TITLE.value == re_type:
                         remember_title = line_report
                 else:
                     drop_operation('Unsupported parse operation')
+    if operation == Operation.ALL_REPORT:
+        if count_open_ports:
+            body.insert(0, remember_title_port)
+            body.insert(0, remember_title)
+            body.append(f'Total open ports: {count_open_ports}')
+            scan[''.join(re.findall(ConstRegex.REG_IP_FROM_TITLE.value, remember_title)[-1:])] = body
+        return scan
+    else:
+        return body
 
-    return scan
+
+def write_to_file(filename, data):
+    print(info_operation(f'Generate report to {filename} file...'))
+    with open(filename, 'w') as writer:
+        if type(data) is list:
+            for line in data:
+                writer.write(f"{line}\n")
+        elif type(data) is dict:
+            for ip_str in data:
+                for line in data[ip_str]:
+                    writer.write(f"{line}\n")
+                writer.write('\n')
+        writer.write(f"Total IP parsed: {len(data)}")
+
+
+def print_target(data):
+    data[0] = header_operation(data[0])
+    data[-1] = header_operation(data[-1])
+    for line in data:
+        print(line)
+
+
+def print_scan(data):
+    if type(data) is list:
+        for line in data:
+            print(line)
+    elif type(data) is dict:
+        for ip_str in data:
+            print('\n')
+            print_target(data[ip_str])
+    print(info_operation(f"Total IP parsed: {len(data)}"))
 
 
 def main():
     parser = argparse.ArgumentParser(description='TCP Parser NMAP')
     parser.add_argument('-s', '--scan', required=True, help='report scan NMAP')
     parser.add_argument('-o', '--output', help='generate file report')
+    parser.add_argument('-t', '--target', help='print-parsing for one ip')
     parser.add_argument('-i', '--ip', required=False, type=int, choices=range(1, 4), help="output ip:\
                                                             1 - for VULNERABLE ip;\
                                                             2 - for ALL ip;\
                                                             3 - for ip with OPEN TCP ports")
-    # parser.add_argument('-r', '--regex', help='Add regex JSON file {\'regex_trigger\':\'count_line\'}')
 
     args = parser.parse_args()
     if not os.path.isfile(args.scan):
@@ -171,20 +195,19 @@ def main():
         elif args.ip == Operation.IP_OPEN.value:
             print(info_operation('Parsing OPEN TCP ip...'))
             parse_reg_scan = sort_ip(parse_scan(report_nmap, Operation.IP_OPEN))
-        else:
-            drop_operation(f'Unsupported ip operation "{args.ip}"')
     else:
         print(info_operation('Parsing...'))
         parse_reg_scan = parse_scan(report_nmap, Operation.ALL_REPORT)
-
+        if args.target:
+            if parse_reg_scan.get(args.target):
+                print_target(parse_reg_scan[args.target])
+                return
+            else:
+                drop_operation("IP address not found")
     if args.output:
-        print(info_operation(f'Generate report to {args.output} file...'))
-        with open(args.output, 'w') as write_tile:
-            for line in parse_reg_scan:
-                write_tile.write(f"{line.replace(Colors.HEADER, '').replace(Colors.END, '')}\n")
+        write_to_file(args.output, parse_reg_scan)
     else:
-        for line in parse_reg_scan:
-            print(line)
+        print_scan(parse_reg_scan)
     print(info_operation('Done'))
     return
 
