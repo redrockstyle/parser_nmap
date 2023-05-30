@@ -6,7 +6,7 @@ from socket import inet_aton
 from enum import Enum
 os.system("")   # enable color
 
-version = "v1.2.0"
+version = "v1.3.0"
 
 json_regex_types = {r'Nmap scan report for .*$': "0", r'^[0-9]*/tcp.*open.*': "0",
                     r'Aggressive OS guesses:.*': "0", r'PORT.*': "0", r'Device type:.*$': "0",
@@ -42,6 +42,7 @@ class ConstRegex(Enum):
     REG_OS_DETAILS = r'OS details:.*$'
     REG_VULNERABLE = r'VULNERABLE:'
     REG_IP_FROM_TITLE = r'[0-9]+(?:\.[0-9]+){3}'
+    REG_PORT_FROM_STRING = r'^[0-9]*'
 
 
 def drop_operation(msg):
@@ -63,7 +64,20 @@ def sort_ip(report_nmap):
     return report_nmap
 
 
-def parse_scan(report_nmap, operation):
+def is_found_line(regex, ports, line):
+    if regex and ports:
+        if re.findall(ConstRegex.REG_PORT_FROM_STRING.value, line)[-1:][0] in ports and re.search(regex, line):
+            return True
+    elif regex:
+        if re.search(regex, line):
+            return True
+    elif ports:
+        if re.findall(ConstRegex.REG_PORT_FROM_STRING.value, line)[-1:][0] in ports:
+            return True
+    return False
+
+
+def parse_scan(report_nmap, ports, regex, operation):
     scan = {}
     body = []
     count_open_ports = 0
@@ -77,20 +91,27 @@ def parse_scan(report_nmap, operation):
 
         if count_append:
             body.append(line_report)
-            count_append = 0
+            count_append = count_append - 1
 
         for re_type, count_type_str in json_regex_types.items():
             if re.search(re_type, line_report):
                 # ALL REPORT SCAN
                 if operation == Operation.ALL_REPORT:
                     if ConstRegex.REG_VULNERABLE.value == re_type:
-                        body.append(line_report)
-                        count_append = count_type_str
+                        if not ports and not regex:
+                            body.append(line_report)
+                            count_append = int(count_type_str)
                         break
                     elif ConstRegex.REG_TCP_PORT.value == re_type:
-                        line_report = line_report.replace('/tcp', '    ').replace('open', '    ')
-                        body.append(line_report)
-                        count_open_ports = count_open_ports + 1
+                        if regex or ports:
+                            if is_found_line(regex, ports, line_report):
+                                line_report = line_report.replace('/tcp', '    ').replace('open', '    ')
+                                body.append(line_report)
+                                count_open_ports = count_open_ports + 1
+                        else:
+                            line_report = line_report.replace('/tcp', '    ').replace('open', '    ')
+                            body.append(line_report)
+                            count_open_ports = count_open_ports + 1
                         break
                     elif ConstRegex.REG_TITLE_PORT.value == re_type:
                         remember_title_port = line_report.replace('STATE', '     ')
@@ -176,6 +197,8 @@ def main():
     parser.add_argument('-s', '--scan', required=True, help='report scan NMAP')
     parser.add_argument('-o', '--output', help='generate file report')
     parser.add_argument('-t', '--target', help='print-parsing for one ip')
+    parser.add_argument('-p', '--ports', help='parsing for required ports')
+    parser.add_argument('-r', '--regex', help='regex search to string port')
     parser.add_argument('-i', '--ip', required=False, type=int, choices=range(1, 4), help="output ip:\
                                                             1 - for VULNERABLE ip;\
                                                             2 - for ALL ip;\
@@ -187,19 +210,25 @@ def main():
 
     report_nmap = open(args.scan, 'r')
     parse_reg_scan = []
+    ports = None
+    regex = None
     if args.ip:
         if args.ip == Operation.IP_VULNERABLE.value:
             print(info_operation('Parsing VULNERABLE ip...'))
-            parse_reg_scan = sort_ip(parse_scan(report_nmap, Operation.IP_VULNERABLE))
+            parse_reg_scan = sort_ip(parse_scan(report_nmap, ports, regex, Operation.IP_VULNERABLE))
         elif args.ip == Operation.IP_ALL.value:
             print(info_operation(f'Parsing ALL ip...'))
-            parse_reg_scan = sort_ip(parse_scan(report_nmap, Operation.IP_ALL))
+            parse_reg_scan = sort_ip(parse_scan(report_nmap, ports, regex, Operation.IP_ALL))
         elif args.ip == Operation.IP_OPEN.value:
             print(info_operation('Parsing OPEN TCP ip...'))
-            parse_reg_scan = sort_ip(parse_scan(report_nmap, Operation.IP_OPEN))
+            parse_reg_scan = sort_ip(parse_scan(report_nmap, ports, regex, Operation.IP_OPEN))
     else:
         print(info_operation('Parsing...'))
-        parse_reg_scan = parse_scan(report_nmap, Operation.ALL_REPORT)
+        if args.ports:
+            ports = list(str(args.ports).split(','))
+        if args.regex:
+            regex = args.regex
+        parse_reg_scan = parse_scan(report_nmap, ports, regex, Operation.ALL_REPORT)
         if args.target:
             if parse_reg_scan.get(args.target):
                 print_target(parse_reg_scan[args.target])
