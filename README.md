@@ -1,7 +1,7 @@
 # Parser NMAP по запросам страждущих
 
 ```
-TCP Parser NMAP Normal output (-oN) v1.4.1
+TCP Parser NMAP Normal output (-oN) v1.5.2
 
 options:
   -h, --help            show this help message and exit
@@ -15,8 +15,8 @@ options:
                         parsing for required ports
   -r REGEX, --regex REGEX
                         regex search to string port
-  -f {min,max}, --format {min,max}
-                        format output
+  -m, --minimal         minimal format
+  -d, --device          parse OS info
   -i {1,2,3}, --ip {1,2,3}
                         output ip: 1 - for VULNERABLE ip; 2 - for ALL ip; 3 - for ip with OPEN TCP ports
 ```

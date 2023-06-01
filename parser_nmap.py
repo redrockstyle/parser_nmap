@@ -7,7 +7,7 @@ from enum import Enum
 
 os.system("")  # enable color
 
-version = "v1.4.1"
+version = "v1.5.2"
 
 json_regex_types = {r'Nmap scan report for .*$': "0", r'^[0-9]*/tcp.*open.*': "0",
                     r'Aggressive OS guesses:.*': "0", r'PORT.*': "0", r'Device type:.*$': "0",
@@ -35,6 +35,7 @@ class Operation(Enum):
 
 
 class ConstRegex(Enum):
+    # for compare
     REG_TITLE = r'Nmap scan report for .*$'
     REG_TITLE_PORT = r'PORT.*'
     REG_TCP_PORT = r'^[0-9]*/tcp.*open.*'
@@ -42,6 +43,7 @@ class ConstRegex(Enum):
     REG_DEVICE_TYPE = r'Device type:.*$'
     REG_OS_DETAILS = r'OS details:.*$'
     REG_VULNERABLE = r'VULNERABLE:'
+    # for get value
     REG_IP_FROM_TITLE = r'[0-9]+(?:\.[0-9]+){3}'
     REG_PORT_FROM_STRING = r'^[0-9]*'
 
@@ -64,6 +66,12 @@ def sort_ip(report_nmap):
     return report_nmap
 
 
+def print_as_format(msg, minimal):
+    if not minimal:
+        print(msg)
+    return
+
+
 def is_found_line(regex, ports, line):
     if regex and ports:
         if int(re.findall(ConstRegex.REG_PORT_FROM_STRING.value, line)[-1:][0]) in ports and re.search(regex, line):
@@ -77,7 +85,7 @@ def is_found_line(regex, ports, line):
     return False
 
 
-def parse_scan(report_nmap, ports, regex, operation):
+def parse_scan(report_nmap, ports, regex, operation, os_append=False):
     scan = {}
     body = []
     count_open_ports = 0
@@ -127,6 +135,16 @@ def parse_scan(report_nmap, ports, regex, operation):
                             body = []
                         remember_title = line_report
                         break
+                    if os_append and count_open_ports:
+                        if ConstRegex.REG_AGGRESSIVE_OS.value == re_type\
+                                or ConstRegex.REG_DEVICE_TYPE.value == re_type\
+                                or ConstRegex.REG_OS_DETAILS.value == re_type:
+                            if regex:
+                                if is_found_line(regex, None, line_report):
+                                    body.append(line_report)
+                            else:
+                                body.append(line_report)
+                            break
                 # VULNERABLE IP
                 elif operation == Operation.IP_VULNERABLE:
                     if ConstRegex.REG_VULNERABLE.value == re_type:
@@ -161,48 +179,43 @@ def parse_scan(report_nmap, ports, regex, operation):
         return body
 
 
-def write_to_file(filename, data, format_out):
-    print(info_operation(f'Generate report to {filename} file...'))
-    with open(filename, 'w') as writer:
-        if type(data) is list:
-            for line in data:
-                writer.write(f"{line}\n")
-        elif type(data) is dict:
-            if format_out == 'min':
-                for ip_str in data:
-                    writer.write(f"{ip_str}\n")
-            elif format_out == 'max':
-                for ip_str in data:
-                    for line in data[ip_str]:
-                        writer.write(f"{line}\n")
-                    writer.write('\n')
-
-        writer.write(f"Total IP parsed: {len(data)}")
-        print(info_operation(f"Total IP parsed: {len(data)}"))
+def write_to_file(fileread, filename, data, minimal):
+    with open(filename, 'a+') as writer:
+        if len(data):
+            writer.write(f'Analyze file: {fileread}\n')
+            if type(data) is list:
+                for line in data:
+                    writer.write(f"{line}\n")
+            elif type(data) is dict:
+                if minimal:
+                    for ip_str in data:
+                        writer.write(f"{ip_str}\n")
+                else:
+                    for ip_str in data:
+                        for line in data[ip_str]:
+                            writer.write(f"{line}\n")
+            writer.write(f"Total IP parsed: {len(data)}\n\n")
 
 
-def print_target(data, format_out):
-    if format_out == 'max':
+def print_target(data, minimal):
+    if minimal:
+        print(''.join(re.findall(ConstRegex.REG_IP_FROM_TITLE.value, data[0])[-1:]))
+    else:
         data[0] = header_operation(data[0])
         data[-1] = header_operation(data[-1])
         for line in data:
             print(line)
         print('')
-    elif format_out == 'min':
-        print(''.join(re.findall(ConstRegex.REG_IP_FROM_TITLE.value, data[0])[-1:]))
-    else:
-        drop_operation('Unsupported format')
         return
 
 
-def print_scan(data, format_out):
+def print_scan(data, minimal=False):
     if type(data) is list:
         for line in data:
             print(line)
     elif type(data) is dict:
         for ip_str in data:
-            print_target(data[ip_str], format_out)
-    print(info_operation(f"Total IP: {len(data)}\n"))
+            print_target(data[ip_str], minimal)
 
 
 def get_ports(ports):
@@ -219,34 +232,37 @@ def get_ports(ports):
         return result
     return None
 
+# for union (mb not releasing?)
+# def normalize_data(data):
+#     return data
+
 
 def preprocedure(file, args):
     report_nmap = open(file, 'r')
+    print(info_operation(f"Analyze file: {file}"))
     parse_reg_scan = []
     if args.ip:
         if args.ip == Operation.IP_VULNERABLE.value:
-            print(info_operation(f'Parsing VULNERABLE ip for {file}...'))
             parse_reg_scan = sort_ip(parse_scan(report_nmap, None, None, Operation.IP_VULNERABLE))
         elif args.ip == Operation.IP_ALL.value:
-            print(info_operation(f'Parsing ALL ip for {file}...'))
             parse_reg_scan = sort_ip(parse_scan(report_nmap, None, None, Operation.IP_ALL))
         elif args.ip == Operation.IP_OPEN.value:
-            print(info_operation(f'Parsing OPEN TCP ip for {file}...'))
             parse_reg_scan = sort_ip(parse_scan(report_nmap, None, None, Operation.IP_OPEN))
     else:
-        print(info_operation(f'Parsing {file}...'))
-        parse_reg_scan = parse_scan(report_nmap, get_ports(args.ports), args.regex, Operation.ALL_REPORT)
+        parse_reg_scan = parse_scan(report_nmap, get_ports(args.ports), args.regex, Operation.ALL_REPORT, args.device)
         if args.target:
             if parse_reg_scan.get(args.target):
-                print_target(parse_reg_scan[args.target], args.format)
+                print_target(parse_reg_scan[args.target], args.minimal)
                 return
             else:
-                print(drop_operation(f"IP address in {file} not found\n"))
+                print_as_format(drop_operation(f"IP address in {file} not found\n"), args.minimal)
                 return
     if args.output:
-        write_to_file(args.output, parse_reg_scan, args.format)
+        write_to_file(file, args.output, parse_reg_scan, args.minimal)
     else:
-        print_scan(parse_reg_scan, args.format)
+        print_scan(parse_reg_scan, args.minimal)
+        if len(parse_reg_scan):
+            print(info_operation(f"Total IP: {len(parse_reg_scan)}"))
     return
 
 
@@ -258,13 +274,26 @@ def main():
     parser.add_argument('-t', '--target', help='print-parsing for one ip')
     parser.add_argument('-p', '--ports', help='parsing for required ports')
     parser.add_argument('-r', '--regex', help='regex search to string port')
-    parser.add_argument('-f', '--format', type=str, choices=['min', 'max'], default='max', help='format output')
+    parser.add_argument('-m', '--minimal', action='store_true', help='minimal format')
+    # parser.add_argument('-u', '--union', action='store_true', help='union equal ip')
+    parser.add_argument('-d', '--device', action='store_true', help='parse OS info')
     parser.add_argument('-i', '--ip', type=int, choices=range(1, 4), help="output ip:\
                                                             1 - for VULNERABLE ip;\
                                                             2 - for ALL ip;\
                                                             3 - for ip with OPEN TCP ports")
 
     args = parser.parse_args()
+    print(info_operation('Parsing...'))
+    if args.output and not args.target:
+        print(info_operation(f'Generate report to {args.output} file'))
+        open(args.output, 'w').close()
+    if args.ip:
+        if args.ip == Operation.IP_VULNERABLE.value:
+            print(info_operation('VULNERABLE IP'))
+        elif args.ip == Operation.IP_ALL.value:
+            print(info_operation('All IP'))
+        elif args.ip == Operation.IP_OPEN.value:
+            print(info_operation('Open IP'))
     if os.path.isdir(args.scan):
         for root, _, files in os.walk(args.scan):
             for file in files:
