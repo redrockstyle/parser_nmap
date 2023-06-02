@@ -1,6 +1,7 @@
 import re
 import argparse
 import os
+import sys
 import struct
 from socket import inet_aton
 from enum import Enum
@@ -194,7 +195,8 @@ def write_to_file(fileread, filename, data, minimal):
                     for ip_str in data:
                         for line in data[ip_str]:
                             writer.write(f"{line}\n")
-            writer.write(f"Total IP parsed: {len(data)}\n\n")
+                        writer.write('\n')
+            writer.write(f"Total IP parsed: {len(data)}\n\n\n\n")
 
 
 def print_target(data, minimal):
@@ -249,7 +251,7 @@ def preprocedure(file, args):
         elif args.ip == Operation.IP_OPEN.value:
             parse_reg_scan = sort_ip(parse_scan(report_nmap, None, None, Operation.IP_OPEN))
     else:
-        parse_reg_scan = parse_scan(report_nmap, get_ports(args.ports), args.regex, Operation.ALL_REPORT, args.device)
+        parse_reg_scan = parse_scan(report_nmap, get_ports(args.port), args.reg, Operation.ALL_REPORT, args.device)
         if args.target:
             if parse_reg_scan.get(args.target):
                 print_target(parse_reg_scan[args.target], args.minimal)
@@ -257,8 +259,8 @@ def preprocedure(file, args):
             else:
                 print_as_format(drop_operation(f"IP address in {file} not found\n"), args.minimal)
                 return
-    if args.output:
-        write_to_file(file, args.output, parse_reg_scan, args.minimal)
+    if args.out:
+        write_to_file(file, args.out, parse_reg_scan, args.minimal)
     else:
         print_scan(parse_reg_scan, args.minimal)
         if len(parse_reg_scan):
@@ -267,26 +269,39 @@ def preprocedure(file, args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="TCP Parser NMAP Normal output (-oN) " + version)
-    parser.add_argument('-v', '-V', '--version', action='version', version=version)
-    parser.add_argument('-s', '--scan', required=True, help='directory or report scan NMAP')
-    parser.add_argument('-o', '--output', help='generate file report')
-    parser.add_argument('-t', '--target', help='print-parsing for one ip')
-    parser.add_argument('-p', '--ports', help='parsing for required ports')
-    parser.add_argument('-r', '--regex', help='regex search to string port')
-    parser.add_argument('-m', '--minimal', action='store_true', help='minimal format')
-    # parser.add_argument('-u', '--union', action='store_true', help='union equal ip')
-    parser.add_argument('-d', '--device', action='store_true', help='parse OS info')
-    parser.add_argument('-i', '--ip', type=int, choices=range(1, 4), help="output ip:\
-                                                            1 - for VULNERABLE ip;\
-                                                            2 - for ALL ip;\
-                                                            3 - for ip with OPEN TCP ports")
+    parser = argparse.ArgumentParser(add_help=False, description="TCP Parser NMAP Normal output (-oN) " + version)
+    group = parser.add_argument_group('about')
+    group.add_argument('-v', '-V', '--version', action='version', version=version)
+    group = parser.add_argument_group('inside')
+    group.add_argument('-s', '--scan', required=True, help='directory or report scan NMAP')
+    group.add_argument('-p', '--port', help='parsing for required ports')
+    group.add_argument('-r', '--reg', help='regex search')
+    group.add_argument('-m', '--minimal', action='store_true', help='minimal format')
+    # group.add_argument('-u', '--union', action='store_true', help='union equal ip')
+    group.add_argument('-d', '--device', action='store_true', help='parse OS info')
+    group.add_argument('-t', '--target', help='print-parsing for one ip')
+    group = parser.add_argument_group('ip only')
+    group.add_argument('-i', '--ip', type=int, choices=range(1, 4), help="1 - VULNERABLE;\
+                                                            2 - all;\
+                                                            3 - with OPEN ports")
+    group = parser.add_argument_group('out')
+    group.add_argument('-o', '--out', help='generate file report')
+
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit()
 
     args = parser.parse_args()
+    if args.ip:
+        if args.target or args.port or args.minimal or args.reg or args.device:
+            parser.print_help()
+            sys.exit()
+
     print(info_operation('Parsing...'))
-    if args.output and not args.target:
-        print(info_operation(f'Generate report to {args.output} file'))
-        open(args.output, 'w').close()
+    if args.out and not args.target:
+        print(info_operation(f'Generate report to {args.out} file'))
+        open(args.out, 'w').close()
+
     if args.ip:
         if args.ip == Operation.IP_VULNERABLE.value:
             print(info_operation('VULNERABLE IP'))
@@ -294,6 +309,7 @@ def main():
             print(info_operation('All IP'))
         elif args.ip == Operation.IP_OPEN.value:
             print(info_operation('Open IP'))
+
     if os.path.isdir(args.scan):
         for root, _, files in os.walk(args.scan):
             for file in files:
