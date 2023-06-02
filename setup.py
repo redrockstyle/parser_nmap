@@ -11,6 +11,6 @@ setup(
     zip_safe=False,
     entry_points={
         'console_scripts':
-            ['parser_nmap = parser_nmap.parser_nmap:main']
+            ['parser = parser_nmap.parser_nmap:main']
     }
 )
